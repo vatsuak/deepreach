@@ -129,4 +129,7 @@ dmypy.json
 .pyre/
 
 # log files
-logs/
+logs/ 
+
+# ignore the checkpoints
+*checkpoints/
