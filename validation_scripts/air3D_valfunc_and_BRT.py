@@ -17,6 +17,12 @@ import configargparse
 import scipy.io as spio
 
 logging_root = './logs'
+try:
+    os.mkdir(logging_root)
+except Exception as e:
+    print ('Not creating new directory because %s' %e)
+else:
+    pass
 angle_alpha = 1.2
 
 # Setting to plot
