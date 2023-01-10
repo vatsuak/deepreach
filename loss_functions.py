@@ -120,3 +120,48 @@ def initialize_hji_air3D(dataset, minWith):
                 'diff_constraint_hom': torch.abs(diff_constraint_hom).sum()}
 
     return hji_air3D
+
+def initialize_hj_particle2D(dataset, minWith):
+    # Initialize the loss function for the particle 2D problem
+    # The dynamics parameters
+    velocity = dataset.velocity
+    theta_max = dataset.theta_max
+    alpha_angle = dataset.alpha_angle
+
+    def hj_particle2D(model_output, gt):
+        source_boundary_values = gt['source_boundary_values']
+        x = model_output['model_in']  # (meta_batch_size, num_points, 3)
+        y = model_output['model_out']  # (meta_batch_size, num_points, 1)
+        dirichlet_mask = gt['dirichlet_mask']
+        batch_size = x.shape[1]
+
+        du, status = diff_operators.jacobian(y, x)
+        dudt = du[..., 0, 0]
+        dudx = du[..., 0, 1:]
+
+        # Particle2D dynamics
+        # \dot x    = v \cos \theta 
+        # \dot y    = v \sin \theta 
+        # u = \theta
+
+        # Compute the hamiltonian for the ego vehicle
+        ham = -1*torch.norm(dudx * velocity,dim=2)
+
+        # If we are computing BRT then take min with zero
+        if minWith == 'zero':
+            ham = torch.clamp(ham, max=0.0)
+
+        if torch.all(dirichlet_mask):
+            diff_constraint_hom = torch.Tensor([0])
+        else:
+            diff_constraint_hom = dudt - ham
+            if minWith == 'target':
+                diff_constraint_hom = torch.max(diff_constraint_hom[:, :, None], y - source_boundary_values)
+
+        dirichlet = y[dirichlet_mask] - source_boundary_values[dirichlet_mask]
+
+        # A factor of 15e2 to make loss roughly equal
+        return {'dirichlet': torch.abs(dirichlet).sum() * batch_size / 15e2,
+                'diff_constraint_hom': torch.abs(diff_constraint_hom).sum()}
+
+    return hj_particle2D
