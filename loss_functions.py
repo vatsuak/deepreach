@@ -121,6 +121,60 @@ def initialize_hji_air3D(dataset, minWith):
 
     return hji_air3D
 
+def initialize_hjb_dubins3D(dataset, minWith):
+    # Initialize the loss function for the air3D problem
+    # The dynamics parameters
+    velocity = dataset.velocity
+    omega_max = dataset.omega_max
+    alpha_angle = dataset.alpha_angle
+
+    def hjb_dubins3D(model_output, gt):
+        source_boundary_values = gt['source_boundary_values']
+        x = model_output['model_in']  # (meta_batch_size, num_points, 4)
+        y = model_output['model_out']  # (meta_batch_size, num_points, 1)
+        dirichlet_mask = gt['dirichlet_mask']
+        batch_size = x.shape[1]
+
+        du, status = diff_operators.jacobian(y, x)
+        dudt = du[..., 0, 0]
+        dudx = du[..., 0, 1:]
+
+        x_x = x[..., 1] * 1.0
+        x_y = x[..., 2] * 1.0
+        x_theta = x[..., 3] * 1.0
+
+        # Scale the costate for theta appropriately to align with the range of [-pi, pi]
+        dudx[..., 2] = dudx[..., 2] / alpha_angle
+        # Scale the coordinates
+        x_theta = alpha_angle * x_theta
+
+        # Dubins3D dynamics
+        # \dot x    = vcos(theta)
+        # \dot y    = vsin(theta)
+        # \dot \psi = u
+
+        # Compute the hamiltonian
+        ham = dudx[..., 0] * velocity * torch.cos(x_theta) + dudx[..., 1] * velocity * torch.sin(x_theta) + torch.abs(dudx[..., 2])*omega_max
+
+        # If we are computing BRT then take min with zero
+        if minWith == 'zero':
+            ham = torch.clamp(ham, max=0.0)
+
+        if torch.all(dirichlet_mask):
+            diff_constraint_hom = torch.Tensor([0])
+        else:
+            diff_constraint_hom = dudt - ham
+            if minWith == 'target':
+                diff_constraint_hom = torch.max(diff_constraint_hom[:, :, None], y - source_boundary_values)
+
+        dirichlet = y[dirichlet_mask] - source_boundary_values[dirichlet_mask]
+
+        # A factor of 15e2 to make loss roughly equal
+        return {'dirichlet': torch.abs(dirichlet).sum() * batch_size / 15e2,
+                'diff_constraint_hom': torch.abs(diff_constraint_hom).sum()}
+
+    return hjb_dubins3D
+
 def initialize_hj_particle2D(dataset, minWith):
     # Initialize the loss function for the particle 2D problem
     # The dynamics parameters

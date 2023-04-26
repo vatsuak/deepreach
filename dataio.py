@@ -229,7 +229,7 @@ class ReachabilityAir3DSource(Dataset):
         if self.pretrain and self.pretrain_counter == self.pretrain_iters:
             self.pretrain = False
 
-        return {'coords': coords}, {'source_boundary_values': boundary_values, 'dirichlet_mask': dirichlet_mask}
+        return {'coords': coords}, {'source_boundary_values': boundary_values, 'dirichlet_mask': dirichlet_mask,'horizon':0}
 
 
 class ReachabilityParticle2DSource(Dataset):
