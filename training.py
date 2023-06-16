@@ -9,11 +9,12 @@ import time
 import numpy as np
 import os
 import shutil
+import json
 
 
 def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_checkpoint, model_dir, loss_fn,
           summary_fn=None, val_dataloader=None, double_precision=False, clip_grad=False, use_lbfgs=False, loss_schedules=None,
-          validation_fn=None, start_epoch=0):
+          validation_fn=None, start_epoch=0, args=None):
 
     optim = torch.optim.Adam(lr=lr, params=model.parameters())
 
@@ -40,6 +41,9 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
             if val == 'y':
                 shutil.rmtree(model_dir)
         os.makedirs(model_dir)
+        opt_path = os.path.join(model_dir, 'commandline_args.txt')
+        with open(opt_path, "w") as fp:
+            json.dump(vars(args),fp, indent=2) 
 
     summaries_dir = os.path.join(model_dir, 'summaries')
     utils.cond_mkdir(summaries_dir)
@@ -50,10 +54,10 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
     writer = SummaryWriter(summaries_dir)
 
     total_steps = 0
-    with tqdm(total=len(train_dataloader) * epochs) as pbar:
+    with tqdm(total=epochs) as pbar:
         train_losses = []
         for epoch in range(start_epoch, epochs):
-            if not epoch % epochs_til_checkpoint and epoch:
+            if not epoch % epochs_til_checkpoint:
                 # Saving the optimizer state is important to produce consistent results
                 checkpoint = { 
                     'epoch': epoch,
@@ -72,6 +76,7 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
                 start_time = time.time()
             
                 model_input = {key: value.cuda() for key, value in model_input.items()}
+                # import pdb;pdb.set_trace()
                 gt = {key: value.cuda() for key, value in gt.items()}
 
                 if double_precision:
@@ -126,24 +131,27 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
 
                     optim.step()
 
-                pbar.update(1)
 
-                if not total_steps % steps_til_summary:
-                    tqdm.write("Epoch %d, Total loss %0.6f, Horizon %0.2fs, iteration time %0.6f" % (epoch, train_loss, gt['horizon'], time.time() - start_time))
-                    if val_dataloader is not None:
-                        print("Running validation set...")
-                        model.eval()
-                        with torch.no_grad():
-                            val_losses = []
-                            for (model_input, gt) in val_dataloader:
-                                model_output = model(model_input)
-                                val_loss = loss_fn(model_output, gt)
-                                val_losses.append(val_loss)
+            if not total_steps % steps_til_summary and total_steps:
+                # tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, \
+                #             iteration time %0.6f" % (epoch, train_loss, gt['horizon'], gt['counter'], gt['full_count'], time.time() - start_time))
+                tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, SeqStart %0.2f SeqEnd %0.2f StartIndex %d" % (epoch, train_loss, gt['horizon'], 
+                                                                     gt['counter'], gt['full_count'], gt["SeqStart"],gt["SeqEnd"],gt["startIndex"]))
+                if val_dataloader is not None:
+                    print("Running validation set...")
+                    model.eval()
+                    with torch.no_grad():
+                        val_losses = []
+                        for (model_input, gt) in val_dataloader:
+                            model_output = model(model_input)
+                            val_loss = loss_fn(model_output, gt)
+                            val_losses.append(val_loss)
 
-                            writer.add_scalar("val_loss", np.mean(val_losses), total_steps)
-                        model.train()
+                        writer.add_scalar("val_loss", np.mean(val_losses), total_steps)
+                    model.train()
 
-                total_steps += 1
+            pbar.update(1)
+            total_steps += 1
 
         torch.save(model.state_dict(),
                    os.path.join(checkpoints_dir, 'model_final.pth'))
