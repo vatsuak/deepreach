@@ -93,12 +93,13 @@ class SingleBVPNet(nn.Module):
     '''A canonical representation network for a BVP.'''
 
     def __init__(self, out_features=1, type='sine', in_features=2,
-                 mode='mlp', hidden_features=256, num_hidden_layers=3, **kwargs):
+                 mode='mlp', hidden_features=256, num_hidden_layers=3, input_transform_function=None, **kwargs):
         super().__init__()
         self.mode = mode
         self.net = FCBlock(in_features=in_features, out_features=out_features, num_hidden_layers=num_hidden_layers,
                            hidden_features=hidden_features, outermost_linear=True, nonlinearity=type)
-        print(self)
+        self.input_transform_function = input_transform_function
+        # print(self)
 
     def forward(self, model_input, params=None):
         if params is None:
@@ -106,8 +107,11 @@ class SingleBVPNet(nn.Module):
 
         # Enables us to compute gradients w.r.t. coordinates
         coords_org = model_input['coords'].clone().detach().requires_grad_(True)
-        coords = coords_org
-
+        if self.input_transform_function is None:
+            coords = coords_org
+        else:
+            coords = self.input_transform_function(coords_org)
+        # import pdb;pdb.set_trace()
         output = self.net(coords)
         return {'model_in': coords_org, 'model_out': output}
 
