@@ -5,6 +5,7 @@ import torch
 import utils
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.autonotebook import tqdm
+from collections import OrderedDict
 import time
 import numpy as np
 import os
@@ -14,7 +15,7 @@ import json
 
 def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_checkpoint, model_dir, loss_fn,
           summary_fn=None, val_dataloader=None, double_precision=False, clip_grad=False, use_lbfgs=False, loss_schedules=None,
-          validation_fn=None, start_epoch=0, args=None):
+          validation_fn=None, start_epoch=0, args=None, adjust_relative_grads=False):
 
     optim = torch.optim.Adam(lr=lr, params=model.parameters())
 
@@ -54,6 +55,11 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
     writer = SummaryWriter(summaries_dir)
 
     total_steps = 0
+
+    if adjust_relative_grads:
+        new_weight1 = 1
+        new_weight2 = 1
+
     with tqdm(total=epochs) as pbar:
         train_losses = []
         for epoch in range(start_epoch, epochs):
@@ -94,9 +100,63 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
                         train_loss.backward()
                         return train_loss
                     optim.step(closure)
-
+                
                 model_output = model(model_input)
                 losses = loss_fn(model_output, gt)
+
+                # Adjust the relative magnitude of the losses if required
+                if adjust_relative_grads:
+                    if losses['diff_constraint_hom'] > 0.01 and losses['dirichlet'] > 0.01: #To make sure not getting nans when the dirichlet loss is zero
+                    # if losses['diff_constraint_hom'] > 0.01:
+                        params = OrderedDict(model.named_parameters())
+                        # Gradients with respect to the PDE loss
+                        optim.zero_grad()
+                        losses['diff_constraint_hom'].backward(retain_graph=True)
+                        grads_PDE = []
+                        for key, param in params.items():
+                            grads_PDE.append(param.grad.view(-1))
+                        grads_PDE = torch.cat(grads_PDE)
+
+                        # Gradients with respect to the boundary loss
+                        optim.zero_grad()
+                        losses['dirichlet'].backward(retain_graph=True)
+                        grads_dirichlet = []
+                        for key, param in params.items():
+                            grads_dirichlet.append(param.grad.view(-1))
+                        grads_dirichlet = torch.cat(grads_dirichlet)
+
+                        # Set the new weight according to the paper
+                        num = torch.mean(torch.abs(grads_PDE))
+                        den = torch.mean(torch.abs(grads_dirichlet))
+                        new_weight1 = 0.9*new_weight1 + 0.1*num/den
+                        losses['dirichlet'] = new_weight1 * losses['dirichlet']
+                        writer.add_scalar('weight_scaling1', new_weight1, total_steps)
+
+                        # # Gradients with respect to the switching loss
+                        # optim.zero_grad()
+                        # losses['switching_loss'].backward(retain_graph=True)
+                        # grads_switching = []
+                        # for key, param in params.items():
+                        #     grads_switching.append(param.grad.view(-1))
+                        # grads_switching = torch.cat(grads_switching)
+
+                        # # Gradients with respect to the periodicity loss
+                        # if 'periodicity' in losses.keys():
+                        #     optim.zero_grad()
+                        #     losses['periodicity'].backward(retain_graph=True)
+                        #     grads_periodicity = []
+                        #     for key, param in params.items():
+                        #         grads_periodicity.append(param.grad.view(-1))
+                        #     grads_periodicity = torch.cat(grads_periodicity)
+
+                        #     # Set the new weight according to the paper
+                        #     num = torch.mean(torch.abs(grads_PDE))
+                        #     den = torch.mean(torch.abs(grads_periodicity))
+                        #     new_weight2 = 0.9*new_weight2 + 0.1*num/den
+                        #     losses['periodicity'] = new_weight2 * losses['periodicity']
+                        #     writer.add_scalar('weight_scaling2', new_weight2, total_steps)
+
+                        # import ipdb; ipdb.set_trace()
 
                 # import ipdb; ipdb.set_trace()
 
@@ -132,11 +192,13 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
                     optim.step()
 
 
-            if not total_steps % steps_til_summary and total_steps:
+            if not total_steps % steps_til_summary:
                 # tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, \
                 #             iteration time %0.6f" % (epoch, train_loss, gt['horizon'], gt['counter'], gt['full_count'], time.time() - start_time))
                 tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, SeqStart %0.2f SeqEnd %0.2f StartIndex %d" % (epoch, train_loss, gt['horizon'], 
                                                                      gt['counter'], gt['full_count'], gt["SeqStart"],gt["SeqEnd"],gt["startIndex"]))
+                # writer.add_graph(model, input_to_model=model_input, verbose=False,strict=False)
+                utils.weight_histograms(writer, epoch, model)
                 if val_dataloader is not None:
                     print("Running validation set...")
                     model.eval()
