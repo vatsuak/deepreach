@@ -195,7 +195,7 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
             if not total_steps % steps_til_summary:
                 # tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, \
                 #             iteration time %0.6f" % (epoch, train_loss, gt['horizon'], gt['counter'], gt['full_count'], time.time() - start_time))
-                tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, SeqStart %0.2f SeqEnd %0.2f StartIndex %d" % (epoch, train_loss, gt['horizon'], 
+                tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, SeqStart %0.2f SeqEnd %0.2f" % (epoch, train_loss, gt['horizon'], 
                                                                      gt['counter'], gt['full_count'], gt["SeqStart"],gt["SeqEnd"]))
                 # writer.add_graph(model, input_to_model=model_input, verbose=False,strict=False)
                 utils.weight_histograms(writer, epoch, model)
