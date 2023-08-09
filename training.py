@@ -191,29 +191,29 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
 
                     optim.step()
 
+                pbar.update(1)
 
-            if not total_steps % steps_til_summary:
-                # tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, \
-                #             iteration time %0.6f" % (epoch, train_loss, gt['horizon'], gt['counter'], gt['full_count'], time.time() - start_time))
-                tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, SeqStart %0.2f SeqEnd %0.2f" % (epoch, train_loss, gt['horizon'], 
-                                                                     gt['counter'], gt['full_count'], gt["SeqStart"],gt["SeqEnd"]))
-                # writer.add_graph(model, input_to_model=model_input, verbose=False,strict=False)
-                utils.weight_histograms(writer, epoch, model)
-                if val_dataloader is not None:
-                    print("Running validation set...")
-                    model.eval()
-                    with torch.no_grad():
-                        val_losses = []
-                        for (model_input, gt) in val_dataloader:
-                            model_output = model(model_input)
-                            val_loss = loss_fn(model_output, gt)
-                            val_losses.append(val_loss)
+                if not total_steps % steps_til_summary:
+                    # tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, \
+                    #             iteration time %0.6f" % (epoch, train_loss, gt['horizon'], gt['counter'], gt['full_count'], time.time() - start_time))
+                    tqdm.write("Epoch %d, Total loss %0.6f, CurrTrainingTime %0.2fs, Counter %d, Total Count %d, SeqStart %0.2f SeqEnd %0.2f" % (epoch, train_loss, gt['horizon'], 
+                                                                        gt['counter'], gt['full_count'], gt["SeqStart"],gt["SeqEnd"]))
+                                                                        
+                    utils.weight_histograms(writer, epoch, model)
+                    if val_dataloader is not None:
+                        print("Running validation set...")
+                        model.eval()
+                        with torch.no_grad():
+                            val_losses = []
+                            for (model_input, gt) in val_dataloader:
+                                model_output = model(model_input)
+                                val_loss = loss_fn(model_output, gt)
+                                val_losses.append(val_loss)
 
-                        writer.add_scalar("val_loss", np.mean(val_losses), total_steps)
-                    model.train()
+                            writer.add_scalar("val_loss", np.mean(val_losses), total_steps)
+                        model.train()
 
-            pbar.update(1)
-            total_steps += 1
+                total_steps += 1
 
         torch.save(model.state_dict(),
                    os.path.join(checkpoints_dir, 'model_final.pth'))
