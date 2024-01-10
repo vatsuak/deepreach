@@ -13,7 +13,7 @@ import shutil
 import json
 
 
-def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_checkpoint, model_dir, loss_fn,
+def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_checkpoint, model_dir, loss_fn, loss_fn_val,
           summary_fn=None, val_dataloader=None, double_precision=False, clip_grad=False, use_lbfgs=False, loss_schedules=None,
           validation_fn=None, start_epoch=0, args=None, adjust_relative_grads=False):
 
@@ -201,16 +201,21 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
                                                                         
                     utils.weight_histograms(writer, epoch, model)
                     if val_dataloader is not None:
-                        print("Running validation set...")
+                        # print("Running validation set...")
                         model.eval()
-                        with torch.no_grad():
-                            val_losses = []
-                            for (model_input, gt) in val_dataloader:
-                                model_output = model(model_input)
-                                val_loss = loss_fn(model_output, gt)
-                                val_losses.append(val_loss)
-
-                            writer.add_scalar("val_loss", np.mean(val_losses), total_steps)
+                        # with torch.no_grad():
+                        val_loss = 0
+                        for (model_input, gt) in val_dataloader:
+                            model_output = model(model_input)
+                            # import pdb;pdb.set_trace()
+                            val_losses = loss_fn_val(model_output, gt)
+                            for loss_name, loss in val_losses.items():
+                                single_loss = loss.mean()
+                                writer.add_scalar(loss_name+"_validation", single_loss, total_steps)
+                                val_loss += single_loss
+                       
+                        writer.add_scalar("total_validation_loss", train_loss, total_steps)
+                        optim.zero_grad()
                         model.train()
 
                 total_steps += 1
