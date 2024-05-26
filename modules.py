@@ -4,6 +4,55 @@ import numpy as np
 from collections import OrderedDict
 import math
 
+import math
+
+import torch
+from torch import Tensor, nn
+
+
+# Learnable Fourier Features for Multi-Dimensional Spatial Positional Encoding
+# from https://github.com/JHLew/Learnable-Fourier-Features/blob/main/positional_encoding.py
+class LearnableFourierFeatures(nn.Module):
+    def __init__(self, pos_dim: int, f_dim: int, h_dim=0, d_dim=0, gamma=1.0):
+        """
+        Implements learned fourier feature positional encodings
+
+        Args:
+            pos_dim (int): dimensionality of positions
+            f_dim (int): dim of fourier features
+            h_dim (int): hidden dim of mlp
+            d_dim (int): output dim
+            gamma (float, optional): scaling factor for intialization. Defaults to 1.0.
+                corresponds to length scale to use of Gaussian kernel approx
+        """
+        super(LearnableFourierFeatures, self).__init__()
+        assert (
+            f_dim % 2 == 0
+        ), "number of fourier feature dimensions must be divisible by 2."
+        enc_f_dim = int(f_dim / 2)
+        self.Wr = nn.Parameter(torch.randn([enc_f_dim, pos_dim]) / gamma**2)
+        # self.mlp = nn.Sequential(
+        #     nn.Linear(f_dim, h_dim), nn.GELU(), nn.Linear(h_dim, d_dim)
+        # )
+        self.div_term = math.sqrt(f_dim)
+
+    def forward(self, pos: Tensor) -> Tensor:
+        """
+        Encods pos into embedding
+
+        Args:
+            pos (Tensor): shape [..., M]
+
+        Returns:
+            Tensor: shape [..., D]
+        """
+        XWr = torch.matmul(pos, self.Wr.T)
+        F = torch.cat([torch.cos(XWr), torch.sin(XWr)], dim=-1) / self.div_term
+
+        pos_enc = F  # self.mlp(F)
+
+        return pos_enc
+
 
 class BatchLinear(nn.Linear):
     '''A linear layer'''
