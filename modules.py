@@ -52,6 +52,26 @@ class LearnableFourierFeatures(nn.Module):
         pos_enc = F  # self.mlp(F)
 
         return pos_enc
+    
+class RELUEmbeddingFunction(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_features=512, num_hidden_layers=3):
+        super(RELUEmbeddingFunction, self).__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.hidden_features = hidden_features
+        self.num_hidden_layers = num_hidden_layers
+
+        self.layers = []
+        self.layers.append(nn.Linear(input_dim, hidden_features))
+        self.layers.append(nn.ReLU())
+        for i in range(num_hidden_layers - 1):
+            self.layers.append(nn.Linear(hidden_features, hidden_features))
+            self.layers.append(nn.ReLU())
+        self.layers.append(nn.Linear(hidden_features, output_dim))
+        self.layers = nn.Sequential(*self.layers)
+
+    def forward(self, x):
+        return self.layers(x)
 
 
 class BatchLinear(nn.Linear):
@@ -204,6 +224,19 @@ class SingleBVPNet_nd(nn.Module):
 
         return {'model_in': coords_org, 'model_out': output, 
                 'du_nd': du_nd}
+
+class CompositeModel(torch.nn.Module):
+    def __init__(self, embedding_function, deepreach_model):
+        super(CompositeModel, self).__init__()
+        self.embedding_function = embedding_function
+        self.deepreach_model = deepreach_model
+
+    def forward(self, x):
+        
+        x = self.embedding_function(x)
+        dr_input = {"coords": x}
+        x = self.deepreach_model(dr_input)["model_out"]
+        return x
 
 
 ########################
